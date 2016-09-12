@@ -3,6 +3,7 @@ var patrol = {
 		const config = require("./config.js").configList[serviceIndex];
 		const TelegramBot = require("./telegramBot.js");
 		const pokemonNames = require("./pokemon_names.js");
+		const pokemonStickers = require('./pokemon_stickers');		
 		const Jimp = require("jimp");
 		const request = require('request');
 		const Pokespotter = require("pokespotter");
@@ -540,7 +541,23 @@ var patrol = {
 			}, 10000);
 		}
 
+		var send_queue = [];
+		var sending = false;
+
+		setInterval(function () {
+			if (send_queue.length==0 || sending)
+				return;
+			var data = send_queue.shift();
+			sendPokemonHandler.apply(null, data);
+		}, 1000);
+
 		function sendPokemon(chatId, pokemon, lastTime) {
+			console.log(pokemon, pokemonNames[pokemon.pokemonId]);
+			send_queue.push([chatId, pokemon, lastTime]);
+		}
+
+		function sendPokemonHandler(chatId, pokemon, lastTime) {
+			sending = true;
 			var distance = "";
 			if (showDistance) {
 				distance = pokemon.distance + "m";
@@ -549,13 +566,14 @@ var patrol = {
 			if (pokemon.isErrorTime) {
 				questionMark = "?"
 			}
-			telegramBot.sendVenue(
-				chatId,
-				pokemon.latitude,
-				pokemon.longitude,
-				"#" + pokemon.pokemonId + " " + pokemonNames[pokemon.pokemonId] + " " + distance,
-				"剩餘 " + getMMSS(lastTime) + questionMark + " 結束 " + getHHMMSS(pokemon.expirationTime) + questionMark
-			);
+			telegramBot.sendSticker(chatId, pokemonStickers[pokemon.pokemonId], {'disable_notification':true}).then(function(){
+				telegramBot.sendLocation(chatId, pokemon.latitude, pokemon.longitude, {'disable_notification':true}).then(function () {
+					var msg = "#" + pokemon.pokemonId + " " + pokemonNames[pokemon.pokemonId] + " " + distance + "剩餘 " + getMMSS(lastTime) + " 結束 " + getHHMMSS(pokemon.expirationTime);
+					telegramBot.sendMessage(chatId, msg).then(function () {
+						sending = false;
+					});
+				});
+			});
 		}
 
 		// 取得剩餘時間 timestamps，若為負數表示已結束
